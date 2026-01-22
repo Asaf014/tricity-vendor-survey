@@ -1,88 +1,139 @@
 <template>
-  <div class="sync-container">
-    <button @click="syncData" :disabled="isSyncing" class="sync-btn">
-      {{ isSyncing ? 'Syncing...' : '☁️ Sync to Google Drive' }}
-    </button>
-    <p v-if="status" class="status-text">{{ status }}</p>
+  <div class="sync-status-bar" :class="{ 'syncing': isSyncing, 'error': hasError }">
+    <div class="status-content" @click="forceSync">
+      <span class="status-indicator"></span>
+      <span class="status-text">{{ statusMessage }}</span>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { getUnsyncedLogs, markAsSynced } from '../utils/db';
-import { blobToBase64 } from '../utils/imageHelper';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { getUnsyncedLogs, markAsSynced, syncEntry } from '../utils/db';
 
 const isSyncing = ref(false);
-const status = ref('');
+const hasError = ref(false);
+const statusMessage = ref('Initializing...');
+let syncInterval = null;
 
-// YOUR SPECIFIC GOOGLE SCRIPT URL
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyfmOuJxuo1h0IAZkf0s7ikfysAaasWbUilQ4xE31O21bpEluaDMhAtjr62NtfP2NA0QQ/exec";
+onMounted(() => {
+  // 1. Load last sync time from memory
+  const lastTime = localStorage.getItem('lastSyncTime');
+  statusMessage.value = lastTime ? 'Last synced: ' + lastTime : 'Waiting for connection';
 
-async function syncData() {
+  // 2. Set up Auto-Sync (Every 30 seconds)
+  syncInterval = setInterval(runAutoSync, 30000);
+
+  // 3. Listen for Internet Reconnection
+  window.addEventListener('online', runAutoSync);
+  
+  // 4. Run immediately on load
+  runAutoSync();
+});
+
+onUnmounted(() => {
+  if (syncInterval) clearInterval(syncInterval);
+  window.removeEventListener('online', runAutoSync);
+});
+
+async function runAutoSync() {
+  if (isSyncing.value || !navigator.onLine) return;
+
+  await forceSync();
+}
+
+async function forceSync() {
   isSyncing.value = true;
-  status.value = "Checking for logs...";
+  hasError.value = false;
+  statusMessage.value = 'Syncing data...';
 
   try {
     const logs = await getUnsyncedLogs();
     
     if (logs.length === 0) {
-      status.value = "No new data to sync.";
-      isSyncing.value = false;
+      updateLastSyncTime();
       return;
     }
 
-    // FIXED LINE: Using simple string concatenation to avoid syntax errors
-    status.value = "Found " + logs.length + " logs. Uploading...";
-
+    // Process logs one by one
     for (let log of logs) {
-      // 1. Prepare Payload
-      let payload = { ...log };
-      
-      // 2. Convert Photo (if exists)
-      if (log.photo_blob) {
-        payload.photo_base64 = await blobToBase64(log.photo_blob);
-        delete payload.photo_blob; // Don't send the raw blob, just the string
-      }
-
-      // 3. Send to Google
-      await fetch(SCRIPT_URL, {
-        method: "POST",
-        mode: "no-cors", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      // 4. Mark as synced locally so we don't send it again
+      await syncEntry(log);
       await markAsSynced(log.log_id);
     }
 
-    status.value = "✅ All data synced successfully!";
+    updateLastSyncTime();
     
   } catch (error) {
     console.error(error);
-    status.value = "❌ Sync Failed. Check internet connection.";
+    hasError.value = true;
+    statusMessage.value = 'Sync failed. Tap to retry.';
   } finally {
     isSyncing.value = false;
   }
 }
+
+function updateLastSyncTime() {
+  const now = new Date();
+  const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  statusMessage.value = 'Last synced: ' + timeString;
+  localStorage.setItem('lastSyncTime', timeString);
+}
 </script>
 
 <style scoped>
-.sync-btn {
-  background-color: #42b883;
-  color: white;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  font-weight: bold;
+.sync-status-bar {
+  background-color: #f8f9fa;
+  border-top: 1px solid #ddd;
+  padding: 8px 15px;
+  font-size: 0.85em;
+  color: #666;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.status-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   cursor: pointer;
 }
-.sync-btn:disabled {
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
   background-color: #ccc;
+  border-radius: 50%;
+  transition: background-color 0.3s;
 }
-.status-text {
-  margin-top: 10px;
-  font-size: 0.9em;
-  color: #666;
+
+/* Active Sync State */
+.syncing {
+  background-color: #e3f2fd;
+  color: #0d47a1;
+}
+.syncing .status-indicator {
+  background-color: #2196f3;
+  animation: pulse 1.5s infinite;
+}
+
+/* Error State */
+.error {
+  background-color: #ffebee;
+  color: #c62828;
+}
+.error .status-indicator {
+  background-color: #ef5350;
+}
+
+/* Success State (Implicit when not syncing/error) */
+.sync-status-bar:not(.syncing):not(.error) .status-indicator {
+  background-color: #66bb6a; /* Green dot for healthy */
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
 }
 </style>
