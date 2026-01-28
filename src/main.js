@@ -1,7 +1,6 @@
 import { createApp } from 'vue'
+import './style.css'
 import App from './App.vue'
+import router from './router'
 
-// Import Leaflet CSS globally so map tiles align correctly
-import 'leaflet/dist/leaflet.css'
-
-createApp(App).mount('#app')
+createApp(App).use(router).mount('#app')

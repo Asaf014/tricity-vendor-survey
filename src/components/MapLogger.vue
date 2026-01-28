@@ -1,272 +1,233 @@
 <template>
-  <div class="map-wrapper">
-    <div id="map"></div>
+  <div class="app-layout">
+    <Sidebar 
+      :isOpen="isSidebarOpen" 
+      :user="user" 
+      :isAdmin="isAdmin" 
+      @close="isSidebarOpen = false" 
+    />
 
-    <div v-if="isAdding" class="center-target">
-      <div class="crosshair"></div>
-      <div class="pin-shadow"></div>
-    </div>
+    <div class="map-container">
+      <button @click="isSidebarOpen = true" class="menu-btn">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="#5f6368"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+      </button>
+      
+      <LayerControl 
+        :boundaryVisible="layers.boundary"
+        @changeBase="setBaseMap"
+        @toggleBoundary="toggleBoundary"
+        @updateFilters="handleFilterUpdate"
+      />
 
-    <button v-if="!isAdding" @click="startAdding" class="fab-btn">
-      <span class="plus-icon">+</span>
-    </button>
-
-    <div v-if="isAdding && !showForm" class="confirm-bar">
-      <p>Drag map to position vendor</p>
-      <div class="bar-buttons">
-        <button @click="confirmLocation" class="btn-confirm">Confirm Location</button>
-        <button @click="cancelAdding" class="btn-cancel">Cancel</button>
-      </div>
-    </div>
-
-    <div v-if="showForm" class="modal-overlay">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Log Vendor Details</h3>
-          <button @click="closeForm" class="close-x">x</button>
-        </div>
+      <div id="map"></div>
+      
+      <div class="bottom-controls">
+        <button @click="locateUser" class="control-btn locate-btn" title="Find My Location">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="#5f6368"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+        </button>
         
-        <div class="scroll-content">
-          <div class="section-title">Identity</div>
-          <div class="form-row">
-            <div class="field half">
-              <label>Type</label>
-              <select v-model="formData.type">
-                <option>Food</option>
-                <option>Clothes</option>
-                <option>Service</option>
-                <option>Fresh Produce</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div class="field half">
-              <label>Structure</label>
-              <select v-model="formData.structure">
-                <option>Moving Cart</option>
-                <option>Static Stall</option>
-                <option>Floor Spread</option>
-                <option>Kiosk</option>
-              </select>
-            </div>
-          </div>
+        <button v-if="!isAdding" @click="startAdding" class="control-btn fab-btn">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        </button>
+      </div>
 
-          <div class="section-title">Context & Traffic</div>
-          <div class="field">
-            <label>Traffic Flow</label>
-            <div class="segment-control">
-              <button :class="{active: formData.traffic === 'Low'}" @click="formData.traffic = 'Low'">Low</button>
-              <button :class="{active: formData.traffic === 'Medium'}" @click="formData.traffic = 'Medium'">Medium</button>
-              <button :class="{active: formData.traffic === 'High'}" @click="formData.traffic = 'High'">High</button>
-            </div>
-          </div>
+      <div v-if="isAdding" class="center-target">
+        <div class="crosshair"></div>
+      </div>
 
-          <div class="field">
-            <label>Stability (Duration)</label>
-            <select v-model="formData.duration">
-              <option>Transient (Less than 1 hr)</option>
-              <option>Daily Shift (4-8 hrs)</option>
-              <option>Semi-Permanent (24 hrs)</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Observation Notes</label>
-            <textarea v-model="formData.notes" placeholder="e.g., Near bus stop, crowding pavement..."></textarea>
-          </div>
-
-          <div class="section-title">Evidence</div>
-          <div class="photo-upload-box">
-            <input type="file" id="photo" accept="image/*" @change="handlePhotoUpload" hidden />
-            <label for="photo" class="photo-label">
-              <span v-if="!photoFile">Tap to take photo</span>
-              <span v-else>Photo Selected</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button @click="submitLog" class="btn-save">Save & Sync</button>
+      <div v-if="isAdding && !showForm" class="confirm-bar">
+        <div class="instruction">Position the crosshair</div>
+        <div class="action-row">
+          <button @click="cancelAdding" class="btn-cancel">Cancel</button>
+          <button @click="confirmLocation" class="btn-confirm">Set Location</button>
         </div>
       </div>
+
+      <AddDataForm 
+        v-if="showForm" 
+        @close="closeForm" 
+        @save="handleSave"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { supabase } from '../supabase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { saveLog } from '../utils/db';
+import Sidebar from './Sidebar.vue';
+import LayerControl from './LayerControl.vue';
+import AddDataForm from './AddDataForm.vue';
 
 const map = ref(null);
+const user = ref(null);
+const isAdmin = ref(false);
+const isSidebarOpen = ref(false);
 const isAdding = ref(false);
 const showForm = ref(false);
-const photoFile = ref(null);
 const tempCenter = ref(null);
 
-const formData = ref({
-  type: 'Food',
-  traffic: 'Medium',
-  structure: 'Moving Cart',
-  duration: 'Daily Shift (4-8 hrs)',
-  notes: ''
-});
+const layers = ref({ boundary: true });
+const activeFilters = ref({ food: true, goods: true, services: true });
 
-onMounted(() => {
-  // 1. Initialize Map with Professional "CartoDB Voyager" Style (No API Key needed)
-  map.value = L.map('map', { zoomControl: false }).setView([30.7333, 76.7794], 14);
+let allVendorData = [];
+let baseLayerStreet = null;
+let baseLayerSat = null;
+let boundaryLayer = null;
+let teamLayerGroup = L.layerGroup(); 
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: 'OpenStreetMap & CartoDB',
-    maxZoom: 20
+onMounted(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    user.value = session.user;
+    if (session.user.email === 'asafali14sarcasam@gmail.com') isAdmin.value = true;
+  }
+
+  map.value = L.map('map', { zoomControl: false }).setView([30.7333, 76.7794], 13);
+  
+  baseLayerStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 });
+  baseLayerSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri Satellite', maxZoom: 19 });
+  
+  baseLayerStreet.addTo(map.value); 
+
+  const fluidBoundary = [
+    [30.7963, 76.8188], [30.7850, 76.8400], [30.7580, 76.8650], [30.7200, 76.8900], 
+    [30.6800, 76.8800], [30.6500, 76.8500], [30.6300, 76.8000], [30.6500, 76.7500], 
+    [30.6600, 76.7000], [30.7000, 76.6800], [30.7400, 76.7000], [30.7600, 76.7200], 
+    [30.7800, 76.7500], [30.7963, 76.8188]
+  ];
+  boundaryLayer = L.polygon(fluidBoundary, { 
+    color: '#E63946', weight: 2, fill: true, fillOpacity: 0.05, dashArray: '5, 5' 
   }).addTo(map.value);
 
-  // 2. Add Zoom Control to top-right
-  L.control.zoom({ position: 'topright' }).addTo(map.value);
-
-  // 3. Locate User immediately
-  map.value.locate({ setView: true, maxZoom: 16 });
+  teamLayerGroup.addTo(map.value);
+  loadTeamPoints();
+  locateUser();
 });
 
-function startAdding() {
-  isAdding.value = true;
+function setBaseMap(type) {
+  if (type === 'street') {
+    map.value.removeLayer(baseLayerSat);
+    baseLayerStreet.addTo(map.value);
+  } else {
+    map.value.removeLayer(baseLayerStreet);
+    baseLayerSat.addTo(map.value);
+  }
 }
 
-function cancelAdding() {
-  isAdding.value = false;
-  showForm.value = false;
+function toggleBoundary() {
+  layers.value.boundary = !layers.value.boundary;
+  if (layers.value.boundary) boundaryLayer.addTo(map.value);
+  else map.value.removeLayer(boundaryLayer);
 }
 
-function confirmLocation() {
-  // Get the exact center of the map
-  tempCenter.value = map.value.getCenter();
-  showForm.value = true;
+function handleFilterUpdate(newFilters) {
+  activeFilters.value = newFilters;
+  renderPoints();
 }
 
-function handlePhotoUpload(event) {
-  photoFile.value = event.target.files[0];
+function locateUser() {
+  map.value.locate({ setView: true, maxZoom: 16 });
+  map.value.once('locationfound', (e) => {
+    L.circleMarker(e.latlng, { radius: 8, fillColor: '#2196f3', color: 'white', weight: 2, fillOpacity: 1 }).addTo(map.value).bindPopup("You");
+  });
 }
 
-function closeForm() {
-  showForm.value = false;
-  isAdding.value = false;
-  photoFile.value = null;
+async function loadTeamPoints() {
+  const { data, error } = await supabase.from('vendors').select('*');
+  if (data) {
+    allVendorData = data;
+    renderPoints();
+  }
 }
 
-async function submitLog() {
+function renderPoints() {
+  teamLayerGroup.clearLayers();
+
+  allVendorData.forEach(point => {
+    const type = (point.type || '').toLowerCase();
+    let isVisible = false;
+
+    if (type.includes('food') && activeFilters.value.food) isVisible = true;
+    else if (type.includes('fresh') && activeFilters.value.food) isVisible = true;
+    else if (type.includes('cloth') && activeFilters.value.goods) isVisible = true;
+    else if (type.includes('service') && activeFilters.value.services) isVisible = true;
+    else if (!type.includes('food') && !type.includes('cloth') && !type.includes('service') && activeFilters.value.goods) isVisible = true;
+
+    if (isVisible) {
+      const color = getPinColor(point.type);
+      const marker = L.circleMarker([point.lat, point.lng], {
+        radius: 7, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 0.9
+      });
+
+      // Construct popup string manually to avoid parser errors
+      let content = '<div style="font-family: sans-serif; min-width: 150px;">';
+      content += '<strong style="color: ' + color + '; font-size: 1.1em;">' + point.type + '</strong><br/>';
+      content += '<span style="font-size: 0.9em; color: #555;">' + (point.user_name || 'Team Member') + '</span><br/>';
+      if (point.traffic) {
+        content += '<div style="margin-top: 5px; font-size: 0.85em; color: #777;">Traffic: ' + point.traffic + '</div>';
+      }
+      content += '<small style="color: #999;">' + new Date(point.created_at).toLocaleDateString() + '</small>';
+      content += '</div>';
+      
+      marker.bindPopup(content);
+      teamLayerGroup.addLayer(marker);
+    }
+  });
+}
+
+function getPinColor(type) {
+  const lowerType = (type || '').toLowerCase();
+  if (lowerType.includes('food')) return '#e74c3c';
+  if (lowerType.includes('cloth')) return '#3498db';
+  if (lowerType.includes('service')) return '#f1c40f';
+  if (lowerType.includes('fresh')) return '#2ecc71';
+  return '#95a5a6';
+}
+
+function startAdding() { isAdding.value = true; }
+function cancelAdding() { isAdding.value = false; showForm.value = false; }
+function confirmLocation() { tempCenter.value = map.value.getCenter(); showForm.value = true; }
+function closeForm() { showForm.value = false; isAdding.value = false; }
+
+async function handleSave(formData) {
+  const { data: { session } } = await supabase.auth.getSession();
   const payload = {
-    ...formData.value,
+    user_id: session.user.id,
+    user_name: session.user.user_metadata.full_name,
     lat: tempCenter.value.lat,
     lng: tempCenter.value.lng,
-    timestamp: new Date().toISOString()
+    ...formData
   };
-
-  try {
-    // 1. Save to Local Database (Offline First)
-    await saveLog(payload, photoFile.value);
-    
-    // 2. Drop a "Success" Marker on the map instantly
-    L.circleMarker([payload.lat, payload.lng], {
-      radius: 8,
-      fillColor: "#42b883",
-      color: "#fff",
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.8
-    }).addTo(map.value);
-
-    alert('Log Saved!');
+  
+  const { error } = await supabase.from('vendors').insert([payload]);
+  
+  if (!error) {
     closeForm();
-  } catch (error) {
-    console.error(error);
-    alert('Error saving log.');
+    loadTeamPoints(); 
+    alert('Entry Saved!');
+  } else {
+    alert('Error: ' + error.message);
   }
 }
 </script>
 
 <style scoped>
-.map-wrapper { position: relative; height: 100vh; width: 100vw; overflow: hidden; }
-#map { height: 100%; width: 100%; z-index: 1; }
-
-/* The Uber-style Crosshair */
-.center-target {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 500; pointer-events: none;
-  display: flex; flex-direction: column; align-items: center;
-}
-.crosshair {
-  width: 20px; height: 20px;
-  border: 2px solid #333; border-radius: 50%;
-  position: relative;
-}
-.crosshair::after {
-  content: ''; position: absolute; top: 50%; left: 50%;
-  width: 4px; height: 4px; background: #333;
-  transform: translate(-50%, -50%); border-radius: 50%;
-}
-.pin-shadow {
-  width: 10px; height: 4px; background: rgba(0,0,0,0.3);
-  border-radius: 50%; margin-top: 20px;
-}
-
-/* Floating Action Button */
-.fab-btn {
-  position: absolute; bottom: 30px; right: 20px;
-  width: 60px; height: 60px;
-  background: #2c3e50; color: white;
-  border-radius: 50%; border: none;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-  z-index: 1000; cursor: pointer;
-  display: flex; justify-content: center; align-items: center;
-}
-.plus-icon { font-size: 30px; font-weight: bold; margin-top: -4px; }
-
-/* Confirm Bar */
-.confirm-bar {
-  position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-  background: white; padding: 15px; border-radius: 30px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-  z-index: 1000; text-align: center; width: 80%;
-}
-.bar-buttons { display: flex; gap: 10px; margin-top: 10px; }
-.btn-confirm { background: #2c3e50; color: white; flex: 2; padding: 10px; border-radius: 20px; border: none; font-weight: bold; }
-.btn-cancel { background: #e74c3c; color: white; flex: 1; padding: 10px; border-radius: 20px; border: none; }
-
-/* Modal Form */
-.modal-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5); z-index: 2000;
-  display: flex; align-items: flex-end; /* Sheet slides up from bottom */
-}
-.modal-card {
-  background: #f8f9fa; width: 100%; border-radius: 20px 20px 0 0;
-  padding: 20px; max-height: 85vh; display: flex; flex-direction: column;
-}
-.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-.scroll-content { overflow-y: auto; padding-bottom: 20px; }
-.section-title { font-size: 0.8em; text-transform: uppercase; color: #666; margin: 15px 0 5px 0; font-weight: bold; }
-.form-row { display: flex; gap: 10px; }
-.field { margin-bottom: 10px; }
-.half { flex: 1; }
-label { display: block; font-size: 0.9em; margin-bottom: 5px; font-weight: 600; }
-select, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: white; font-family: inherit; }
-textarea { height: 60px; resize: none; }
-
-/* Segment Control */
-.segment-control { display: flex; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
-.segment-control button { flex: 1; border: none; background: white; padding: 10px; cursor: pointer; font-size: 0.9em; }
-.segment-control button.active { background: #2c3e50; color: white; }
-
-/* Photo Button */
-.photo-upload-box { margin-top: 10px; }
-.photo-label {
-  display: block; width: 100%; padding: 15px;
-  border: 2px dashed #ccc; border-radius: 10px;
-  text-align: center; color: #666; cursor: pointer;
-}
-
-.modal-footer { margin-top: auto; padding-top: 10px; }
-.btn-save { width: 100%; background: #42b883; color: white; padding: 15px; border: none; border-radius: 12px; font-size: 1.1em; font-weight: bold; }
-.close-x { background: none; border: none; font-size: 24px; color: #666; }
+.app-layout { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+.map-container { width: 100%; height: 100%; position: relative; }
+#map { width: 100%; height: 100%; z-index: 1; }
+.menu-btn { position: absolute; top: 20px; left: 20px; z-index: 1000; background: white; border: none; width: 44px; height: 44px; border-radius: 8px; font-size: 22px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; transition: 0.1s; }
+.bottom-controls { position: absolute; bottom: 30px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 15px; align-items: center; }
+.control-btn { width: 56px; height: 56px; border-radius: 50%; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.25); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.1s; }
+.locate-btn { background: white; }
+.fab-btn { background: #2c3e50; }
+.center-target { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 500; pointer-events: none; }
+.crosshair { width: 20px; height: 20px; border: 2px solid #333; border-radius: 50%; background: rgba(255,255,255,0.4); box-shadow: 0 0 0 1px rgba(0,0,0,0.2); }
+.confirm-bar { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); background: white; padding: 15px 25px; border-radius: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 1000; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 280px; }
+.instruction { font-size: 0.85em; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.action-row { display: flex; gap: 10px; width: 100%; }
+.btn-confirm { flex: 2; background: #2c3e50; color: white; padding: 12px; border-radius: 20px; border: none; font-weight: 600; cursor: pointer; }
+.btn-cancel { flex: 1; background: #e74c3c; color: white; padding: 12px; border-radius: 20px; border: none; font-weight: 600; cursor: pointer; }
 </style>
