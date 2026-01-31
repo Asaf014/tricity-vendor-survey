@@ -53,13 +53,14 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, render, h } from 'vue'; // Added render & h for mounting component
 import { supabase } from '../supabase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Sidebar from './Sidebar.vue';
 import LayerControl from './LayerControl.vue';
 import AddDataForm from './AddDataForm.vue';
+import PopupCard from './PopupCard.vue'; // Import New Popup
 
 const map = ref(null);
 const user = ref(null);
@@ -159,20 +160,19 @@ function renderPoints() {
     if (isVisible) {
       const color = getPinColor(point.type);
       const marker = L.circleMarker([point.lat, point.lng], {
-        radius: 7, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 0.9
+        radius: 8, fillColor: color, color: '#fff', weight: 2, fillOpacity: 0.9
       });
 
-      // Construct popup string manually to avoid parser errors
-      let content = '<div style="font-family: sans-serif; min-width: 150px;">';
-      content += '<strong style="color: ' + color + '; font-size: 1.1em;">' + point.type + '</strong><br/>';
-      content += '<span style="font-size: 0.9em; color: #555;">' + (point.user_name || 'Team Member') + '</span><br/>';
-      if (point.traffic) {
-        content += '<div style="margin-top: 5px; font-size: 0.85em; color: #777;">Traffic: ' + point.traffic + '</div>';
-      }
-      content += '<small style="color: #999;">' + new Date(point.created_at).toLocaleDateString() + '</small>';
-      content += '</div>';
+      // VUE MOUNTING MAGIC:
+      // 1. Create a dummy DIV
+      const div = document.createElement('div');
       
-      marker.bindPopup(content);
+      // 2. Render our PopupCard component into that DIV
+      render(h(PopupCard, { data: point }), div);
+
+      // 3. Bind the DIV to Leaflet
+      marker.bindPopup(div, { minWidth: 260, maxWidth: 300, closeButton: false });
+      
       teamLayerGroup.addLayer(marker);
     }
   });
