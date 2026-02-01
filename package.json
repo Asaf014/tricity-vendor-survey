@@ -9,11 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@formkit/auto-animate": "^0.9.0",
+    "@geoman-io/leaflet-geoman-free": "^2.19.0",
     "@supabase/supabase-js": "^2.91.0",
+    "apexcharts": "^5.3.6",
     "idb": "^8.0.0",
     "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
+    "lucide-vue-next": "^0.563.0",
     "vue": "^3.4.0",
-    "vue-router": "^4.6.4"
+    "vue-router": "^4.6.4",
+    "vue3-apexcharts": "^1.10.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",

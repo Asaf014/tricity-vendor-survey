@@ -4,7 +4,7 @@
       
       <div class="modal-header">
         <div class="header-text">
-          <h3>Log Observation</h3>
+          <h3>{{ editData ? 'Edit Observation' : 'Log Observation' }}</h3>
           <span class="gps-text">{{ userLocation }}</span>
         </div>
         <button @click="$emit('close')" class="btn-close">&times;</button>
@@ -101,7 +101,7 @@
 
       <div class="modal-footer">
         <button @click="submit" class="btn-save" :disabled="isSaving">
-          {{ isSaving ? 'Saving...' : 'Save Entry' }}
+          {{ isSaving ? 'Saving...' : (editData ? 'Update Entry' : 'Save Entry') }}
         </button>
       </div>
     </div>
@@ -109,10 +109,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';
 
 const emit = defineEmits(['close', 'save']);
+const props = defineProps({
+  editData: {
+    type: Object,
+    default: null
+  }
+});
+
 const rawSchema = ref([]);
 const userLocation = ref('Getting GPS...');
 const isSaving = ref(false);
@@ -150,6 +157,19 @@ onMounted(async () => {
       pos => userLocation.value = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`,
       err => userLocation.value = "GPS Off"
     );
+  }
+
+  // 3. Populate form if editing existing record
+  if (props.editData) {
+    formData.value.type = props.editData.type || 'Food';
+    formData.value.traffic = props.editData.traffic || 'Medium';
+    formData.value.notes = props.editData.notes || '';
+    formData.value.survey_data = { ...props.editData.survey_data } || {};
+    formData.value.media_data = { ...props.editData.media_data } || { photo: null, audio: null };
+    
+    // Update media file display states
+    if (formData.value.media_data.photo) mediaFiles.value.photo = true;
+    if (formData.value.media_data.audio) mediaFiles.value.audio = true;
   }
 });
 
@@ -250,13 +270,13 @@ function submit() {
 </script>
 
 <style scoped>
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 3000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); font-family: 'Segoe UI', sans-serif; }
-.modal-card { background: #f8f9fa; width: 95%; max-width: 480px; max-height: 90vh; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 3000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); font-family: 'Segoe UI', sans-serif; padding: 12px; }
+.modal-card { background: #f8f9fa; width: 100%; max-width: 480px; max-height: 90vh; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; }
 
 /* Header */
-.modal-header { background: white; padding: 15px 20px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+.modal-header { background: white; padding: 15px 20px; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .header-text h3 { margin: 0; color: #2c3e50; font-size: 1.1em; font-weight: 700; }
-.gps-text { font-size: 0.75em; color: #1a73e8; font-family: monospace; background: #e8f0fe; padding: 2px 6px; border-radius: 4px; }
+.gps-text { font-size: 0.75em; color: #1a73e8; font-family: monospace; background: #e8f0fe; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
 .btn-close { background: none; border: none; font-size: 28px; color: #adb5bd; cursor: pointer; line-height: 1; }
 
 .form-scroll { padding: 15px; overflow-y: auto; flex: 1; }
@@ -267,7 +287,7 @@ function submit() {
 
 /* Media Buttons */
 .media-row { display: flex; gap: 10px; }
-.media-btn { flex: 1; display: flex; align-items: center; justify-content: center; background: #f1f3f4; border: 2px dashed #adb5bd; padding: 15px; border-radius: 8px; cursor: pointer; font-size: 0.9em; font-weight: 600; color: #495057; transition: 0.2s; text-align: center; }
+.media-btn { flex: 1; display: flex; align-items: center; justify-content: center; background: #f1f3f4; border: 2px dashed #adb5bd; padding: 15px; border-radius: 8px; cursor: pointer; font-size: 0.9em; font-weight: 600; color: #495057; transition: 0.2s; text-align: center; min-height: 60px; }
 .media-btn:hover { background: #e9ecef; border-color: #495057; }
 .media-btn input { display: none; }
 
@@ -275,20 +295,118 @@ function submit() {
 .media-btn.done { background: #e6fcf5; border-color: #20c997; border-style: solid; color: #087f5b; }
 
 /* Form Elements */
-.form-row { display: flex; gap: 12px; }
-.half { flex: 1; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.half { flex: 1; min-width: 150px; }
 .form-group { margin-bottom: 15px; }
 label { display: block; font-size: 0.85em; font-weight: 600; color: #495057; margin-bottom: 6px; }
-select, input[type="text"], input[type="number"], textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 6px; font-size: 0.95em; background: #fff; }
+select, input[type="text"], input[type="number"], textarea { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 6px; font-size: 0.95em; background: #fff; box-sizing: border-box; }
 textarea { height: 70px; resize: none; }
 
-.slider-wrapper { display: flex; align-items: center; gap: 15px; background: #f8f9fa; padding: 8px; border-radius: 6px; border: 1px solid #dee2e6; }
-input[type="range"] { flex: 1; }
+.slider-wrapper { display: flex; align-items: center; gap: 15px; background: #f8f9fa; padding: 8px; border-radius: 6px; border: 1px solid #dee2e6; flex-wrap: wrap; }
+input[type="range"] { flex: 1; min-width: 100px; }
 .slider-val { font-weight: 700; color: #1a73e8; font-size: 1.1em; min-width: 30px; text-align: center; }
 
 .loading-state { text-align: center; padding: 20px; color: #888; font-style: italic; }
 
 .modal-footer { padding: 16px 20px; background: white; border-top: 1px solid #e9ecef; }
-.btn-save { width: 100%; padding: 14px; background: #2c3e50; color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.btn-save { width: 100%; padding: 14px; background: #2c3e50; color: white; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.95em; }
 .btn-save:disabled { background: #adb5bd; cursor: not-allowed; }
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 8px;
+  }
+
+  .modal-card {
+    max-height: 95vh;
+  }
+
+  .modal-header {
+    padding: 12px 16px;
+  }
+
+  .header-text h3 {
+    font-size: 1em;
+  }
+
+  .form-scroll {
+    padding: 12px;
+  }
+
+  .section-card {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .media-btn {
+    padding: 12px;
+    font-size: 0.85em;
+    min-height: 50px;
+  }
+
+  .half {
+    min-width: 100%;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+
+  select, input, textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .modal-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+
+  .header-text h3 {
+    font-size: 0.95em;
+  }
+
+  .gps-text {
+    font-size: 0.7em;
+  }
+
+  .form-scroll {
+    padding: 10px;
+  }
+
+  .section-card {
+    padding: 10px;
+  }
+
+  .media-row {
+    gap: 8px;
+  }
+
+  .media-btn {
+    padding: 10px;
+    font-size: 0.8em;
+  }
+
+  .modal-footer {
+    padding: 12px 16px;
+  }
+
+  .btn-save {
+    padding: 12px;
+    font-size: 0.9em;
+  }
+}
 </style>
